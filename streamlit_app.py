@@ -1,66 +1,146 @@
 import streamlit as st
 import random
+import time
 
-# ตั้งค่า page
-st.set_page_config(page_title="🧠 Quiz Game", page_icon="📝", layout="centered")
+# ---------- ฟังก์ชันสร้างโจทย์ ----------
+def generate_question(level):
+    ops = ['+', '-', '*', '/']
+    op = random.choice(ops)
 
-# CSS สวยๆ
+    if level == "ง่าย":
+        r = (1, 10)
+    elif level == "ปานกลาง":
+        r = (1, 30)
+    else:
+        r = (1, 100)
+
+    a = random.randint(*r)
+    b = random.randint(*r)
+
+    if op == '/':
+        a = a * b
+
+    question = f"{a} {op} {b}"
+    answer = eval(question)
+    return question, answer
+
+
+# ---------- UI เริ่มต้น ----------
+st.set_page_config(page_title="เกมคิดเลขเร็ว", page_icon="🧮", layout="centered")
+
 st.markdown("""
 <style>
-.app-title { text-align:center; color:#FF5733; font-weight:bold; font-size:40px; margin-bottom:10px; }
-.question-box { background-color:#F0F8FF; padding:20px; border-radius:15px; margin-bottom:20px; box-shadow:2px 2px 10px #aaa; }
-.big-emoji { font-size:120px; text-align:center; }
-.option-button button { background-color:#1E90FF; color:white; font-size:18px; padding:12px 20px; margin:5px; border-radius:10px; width:100%; }
-.info-box { text-align:center; font-size:20px; color:#333; font-weight:bold; margin-top:15px; }
+.big-number {
+    font-size: 60px;
+    text-align: center;
+    font-weight: bold;
+    padding: 20px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Header
-st.markdown("<h1 class='app-title'>🧠 Quiz Game 🧠</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;'>ตอบคำถามให้ถูกเพื่อสะสมคะแนน!</p>", unsafe_allow_html=True)
+st.title("🧮 เกมคิดเลขเร็ว")
+st.write("ทดสอบความเร็วในการคิดเลขของคุณ!")
 
-# คำถาม
-quiz = [
-    {"question": "ประเทศไทยมีเมืองหลวงชื่ออะไร?", "options": ["กรุงเทพฯ", "เชียงใหม่", "ภูเก็ต", "นครราชสีมา"], "answer": "กรุงเทพฯ"},
-    {"question": "สัตว์ตัวใดบินได้?", "options": ["ปลา", "นก", "ช้าง", "สุนัข"], "answer": "นก"},
-    {"question": "2 + 3 = ?", "options": ["4", "5", "6", "7"], "answer": "5"},
-    {"question": "สีของท้องฟ้าวันแจ่มใส?", "options": ["แดง", "ฟ้า", "เขียว", "ดำ"], "answer": "ฟ้า"},
-]
+# ---------- Session State Setup ----------
+if "started" not in st.session_state:
+    st.session_state.started = False
+if "question" not in st.session_state:
+    st.session_state.question = ""
+if "answer" not in st.session_state:
+    st.session_state.answer = None
+if "score" not in st.session_state:
+    st.session_state.score = 0
+if "total" not in st.session_state:
+    st.session_state.total = 5
+if "count" not in st.session_state:
+    st.session_state.count = 0
+if "start_time" not in st.session_state:
+    st.session_state.start_time = None
+if "level" not in st.session_state:
+    st.session_state.level = "ง่าย"
 
-# session state
-if 'current_question' not in st.session_state:
-    st.session_state.current_question = random.choice(quiz)
-if 'รอบ' not in st.session_state:
-    st.session_state.รอบ = 1
-if 'คะแนน' not in st.session_state:
-    st.session_state.คะแนน = 0
-if 'answered' not in st.session_state:
-    st.session_state.answered = False
 
-question = st.session_state.current_question
+# ---------- เริ่มเกม ----------
+if not st.session_state.started:
+    st.subheader("เลือกระดับความยาก")
+    level = st.selectbox("ระดับ", ["ง่าย", "ปานกลาง", "ยาก"])
 
-# แสดงคำถาม
-st.markdown(f"<div class='question-box'><h3>{question['question']}</h3></div>", unsafe_allow_html=True)
+    rounds = st.slider("จำนวนข้อ", 3, 20, 5)
 
-# แสดงตัวเลือกเป็นปุ่ม
-for option in question['options']:
-    if st.button(option) and not st.session_state.answered:
-        st.session_state.answered = True
-        if option == question['answer']:
-            st.markdown("<div class='big-emoji'>🎉</div>", unsafe_allow_html=True)
-            st.success("ถูกต้อง! ✅")
-            st.session_state.คะแนน += 1
+    if st.button("🚀 เริ่มเกม"):
+        st.session_state.level = level
+        st.session_state.total = rounds
+        st.session_state.started = True
+        st.session_state.score = 0
+        st.session_state.count = 0
+        st.session_state.start_time = time.time()
+
+        q, ans = generate_question(level)
+        st.session_state.question = q
+        st.session_state.answer = ans
+
+    st.stop()
+
+# ---------- โชว์โจทย์ ----------
+st.markdown(f"<div class='big-number'>{st.session_state.question}</div>", unsafe_allow_html=True)
+
+user = st.text_input("คำตอบของคุณ", key="answer_box")
+
+col1, col2 = st.columns(2)
+submit = col1.button("ตอบเลย ✔️")
+giveup = col2.button("ข้าม ✖️")
+
+
+# ---------- ตรวจคำตอบ ----------
+if submit:
+    try:
+        user_val = float(user)
+        if abs(user_val - st.session_state.answer) < 1e-6:
+            st.success("ถูกต้อง! 🎉")
+            st.session_state.score += 1
         else:
-            st.markdown("<div class='big-emoji'>❌</div>", unsafe_allow_html=True)
-            st.error(f"ผิด! คำตอบที่ถูกคือ: {question['answer']} 😅")
+            st.error(f"ผิด! คำตอบที่ถูกคือ {st.session_state.answer}")
+    except:
+        st.warning("กรุณากรอกตัวเลขนะครับ")
 
-# ปุ่มต่อไป
-if st.session_state.answered:
-    if st.button("คำถามต่อไป"):
-        st.session_state.current_question = random.choice(quiz)
-        st.session_state.รอบ += 1
-        st.session_state.answered = False
-        st.experimental_rerun()  # เรียก rerun เฉพาะที่ปุ่ม "คำถามต่อไป"
-        
-# แสดงรอบและคะแนน
-st.markdown(f"<p class='info-box'>รอบที่ {st.session_state.รอบ} | คะแนน: {st.session_state.คะแนน}</p>", unsafe_allow_html=True)
+    st.session_state.count += 1
+
+    if st.session_state.count >= st.session_state.total:
+        st.session_state.started = False
+    else:
+        q, ans = generate_question(st.session_state.level)
+        st.session_state.question = q
+        st.session_state.answer = ans
+
+    st.experimental_rerun()
+
+
+# ---------- ข้ามข้อ ----------
+if giveup:
+    st.warning(f"ข้าม! คำตอบคือ {st.session_state.answer}")
+    st.session_state.count += 1
+
+    if st.session_state.count >= st.session_state.total:
+        st.session_state.started = False
+    else:
+        q, ans = generate_question(st.session_state.level)
+        st.session_state.question = q
+        st.session_state.answer = ans
+
+    st.experimental_rerun()
+
+
+# ---------- สรุปผล ----------
+if not st.session_state.started and st.session_state.count > 0:
+    total_time = time.time() - st.session_state.start_time
+
+    st.header("🎉 ผลลัพธ์สุดท้าย")
+    st.metric("คะแนน", f"{st.session_state.score} / {st.session_state.total}")
+    st.metric("เวลาที่ใช้ทั้งหมด", f"{total_time:.2f} วินาที")
+
+    if st.button("🔁 เล่นอีกครั้ง"):
+        st.session_state.started = False
+        st.session_state.score = 0
+        st.session_state.count = 0
+        st.experimental_rerun()
