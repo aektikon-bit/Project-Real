@@ -19,12 +19,11 @@ def save_stats(name, score, total, level, total_time):
         writer = csv.writer(f)
         if not exists:
             writer.writerow(header)
-        writer.writerow([datetime.now(), name, score, total, level, total_time])
+        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name, score, total, level, int(total_time)])
 
 
 def update_leaderboard(name, score):
     file = "leaderboard.csv"
-    header = ["name", "score"]
 
     exists = os.path.isfile(file)
     rows = []
@@ -33,6 +32,7 @@ def update_leaderboard(name, score):
         with open(file, "r", encoding="utf-8") as f:
             rows = list(csv.reader(f))
 
+    # ห้ามเขียนซ้ำหัวตาราง
     rows.append([name, score])
 
     with open(file, "w", newline="", encoding="utf-8") as f:
@@ -63,9 +63,9 @@ def explain_solution(a, op, b, ans):
     elif op == "-":
         return f"{a} - {b} = {ans}"
     elif op == "*":
-        return f"{a} × {b} = ({a} × {b//2}) × 2 (หรือแตกเป็น {a}×5 + {a}×{b-5})"
+        return f"{a} × {b} = {a*b}"
     elif op == "/":
-        return f"{a} / {b} = {ans} เพราะ {a} = {b} × {int(ans)}"
+        return f"{a} ÷ {b} = {ans} เพราะ {a} = {b} × {int(ans)}"
     return ""
 
 
@@ -83,11 +83,14 @@ def generate_question(level):
     a = random.randint(*r)
     b = random.randint(*r)
 
+    # ให้หารลงตัวเท่านั้น
     if op == "/":
         a = a * b
+        answer = a / b
+    else:
+        answer = eval(f"{a}{op}{b}")
 
     question = f"{a} {op} {b}"
-    answer = eval(question)
     return a, op, b, question, answer
 
 
@@ -97,31 +100,13 @@ def generate_question(level):
 
 st.set_page_config(page_title="เกมคิดเลขเร็ว", page_icon="🧮", layout="wide")
 
-st.markdown("""
-<style>
-.big-card {
-    background: #ffffffcc;
-    padding: 30px;
-    border-radius: 20px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.15);
-    margin-bottom: 20px;
-}
-.big-number {
-    font-size: 70px;
-    font-weight: bold;
-    text-align: center;
-    padding: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
 st.title("🧮 เกมคิดเลขเร็ว — เวอร์ชันอัปเกรด")
+
 
 # -------------------------
 # Setup Session State
 # -------------------------
-for key, default in {
+defaults = {
     "started": False,
     "a": None,
     "b": None,
@@ -134,9 +119,10 @@ for key, default in {
     "start_time": None,
     "level": "ง่าย",
     "name": "",
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+}
+
+for key, default in defaults.items():
+    st.session_state.setdefault(key, default)
 
 
 # ==========================================================
@@ -144,8 +130,7 @@ for key, default in {
 # ==========================================================
 if not st.session_state.started:
     st.subheader("เริ่มเล่น")
-    name = st.text_input("ใส่ชื่อผู้เล่นก่อนเริ่ม (สำหรับ leaderboard)", value="Player")
-    st.session_state.name = name
+    st.session_state.name = st.text_input("ชื่อผู้เล่น", value=st.session_state.get("name", "Player"))
 
     level = st.selectbox("เลือกระดับความยาก", ["ง่าย", "ปานกลาง", "ยาก"])
     rounds = st.slider("จำนวนข้อ", 3, 20, 5)
@@ -159,9 +144,7 @@ if not st.session_state.started:
         st.session_state.started = True
 
         a, op, b, q, ans = generate_question(level)
-        st.session_state.a, st.session_state.op, st.session_state.b = a, op, b
-        st.session_state.question = q
-        st.session_state.answer = ans
+        st.session_state.update({"a": a, "b": b, "op": op, "question": q, "answer": ans})
 
         st.experimental_rerun()
 
@@ -181,9 +164,10 @@ if not st.session_state.started:
 # ==========================================================
 # Game Screen
 # ==========================================================
-st.markdown(f"<div class='big-card'><div class='big-number'>{st.session_state.question}</div></div>", unsafe_allow_html=True)
+st.header(f"ข้อที่ {st.session_state.count+1} / {st.session_state.total}")
+st.markdown(f"<h1 style='font-size:70px; text-align:center;'>{st.session_state.question}</h1>", unsafe_allow_html=True)
 
-user_input = st.text_input("คำตอบของคุณ", key="answer_box")
+user_input = st.text_input("คำตอบของคุณ", key="input_answer")
 
 col1, col2 = st.columns(2)
 submit = col1.button("✔️ ตอบเลย")
@@ -193,6 +177,15 @@ giveup = col2.button("✖️ ข้าม")
 # ==========================================================
 # Answer Check
 # ==========================================================
+def next_question():
+    if st.session_state.count >= st.session_state.total:
+        st.session_state.started = False
+    else:
+        a, op, b, q, ans = generate_question(st.session_state.level)
+        st.session_state.update({"a": a, "b": b, "op": op,
+                                 "question": q, "answer": ans})
+
+
 if submit:
     try:
         user_val = float(user_input)
@@ -201,38 +194,22 @@ if submit:
             st.session_state.score += 1
         else:
             st.error(f"ผิด! คำตอบคือ {st.session_state.answer}")
-            st.info("🧠 วิธีคิดแบบลัด:")
-            st.write(explain_solution(st.session_state.a, st.session_state.op, st.session_state.b, st.session_state.answer))
-
+            st.info("🧠 วิธีคิด:")
+            st.write(explain_solution(st.session_state.a, st.session_state.op,
+                                      st.session_state.b, st.session_state.answer))
     except:
         st.warning("กรุณากรอกเป็นตัวเลข!")
         st.stop()
 
     st.session_state.count += 1
-
-    if st.session_state.count >= st.session_state.total:
-        st.session_state.started = False
-    else:
-        a, op, b, q, ans = generate_question(st.session_state.level)
-        st.session_state.a, st.session_state.op, st.session_state.b = a, op, b
-        st.session_state.question = q
-        st.session_state.answer = ans
-
+    next_question()
     st.experimental_rerun()
 
-# ข้ามข้อ
+
 if giveup:
     st.warning(f"ข้าม! คำตอบคือ {st.session_state.answer}")
     st.session_state.count += 1
-
-    if st.session_state.count >= st.session_state.total:
-        st.session_state.started = False
-    else:
-        a, op, b, q, ans = generate_question(st.session_state.level)
-        st.session_state.a, st.session_state.op, st.session_state.b = a, op, b
-        st.session_state.question = q
-        st.session_state.answer = ans
-
+    next_question()
     st.experimental_rerun()
 
 
@@ -240,20 +217,18 @@ if giveup:
 # Result Screen
 # ==========================================================
 if not st.session_state.started and st.session_state.count > 0:
-    total_time = time.time() - st.session_state.start_time
+    total_time = int(time.time() - st.session_state.start_time)
 
     st.header("🎉 ผลลัพธ์ของคุณ")
     st.metric("คะแนนรวม", f"{st.session_state.score}/{st.session_state.total}")
-    st.metric("เวลาที่ใช้ทั้งหมด", f"{total_time:.2f} วินาที")
+    st.metric("เวลาที่ใช้ทั้งหมด", f"{total_time} วินาที")
 
-    # บันทึกสถิติ
-    save_stats(st.session_state.name, st.session_state.score, st.session_state.total,
-               st.session_state.level, total_time)
+    save_stats(st.session_state.name, st.session_state.score,
+               st.session_state.total, st.session_state.level, total_time)
 
-    # อัปเดต leaderboard
     update_leaderboard(st.session_state.name, st.session_state.score)
 
     if st.button("🔁 เล่นอีกครั้ง"):
-        st.session_state.started = False
-        st.session_state.count = 0
+        for key in defaults:
+            st.session_state[key] = defaults[key]
         st.experimental_rerun()
